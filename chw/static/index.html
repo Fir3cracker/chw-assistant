@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Afya Msaidizi – Community Health Assistant</title>
+<style>
+:root{--bg:#f6f7f5;--card:#fff;--ink:#1d2b24;--muted:#5b6b63;--brand:#1f7a4d;--on-brand:#fff;--bot:#e8efe9;--line:#dde3de;--alert:#b3261e;--on-alert:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#121714;--card:#1b231e;--ink:#e8efe9;--muted:#9fb0a6;--brand:#3fae7a;--on-brand:#0b1510;--bot:#243029;--line:#2c3a32;--alert:#e5534b;--on-alert:#fff}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;max-width:720px;margin:0 auto}
+header{padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--card)}
+h1{font-size:18px;margin:0}
+header p{margin:2px 0 8px;color:var(--muted);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+select,input,button{font:inherit;color:var(--ink)}
+select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);max-width:100%}
+#log{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:88%;padding:10px 12px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.user{align-self:flex-end;background:var(--brand);color:var(--on-brand);border-bottom-right-radius:4px}
+.bot{align-self:flex-start;background:var(--bot);border-bottom-left-radius:4px}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;margin-bottom:6px;border:1px solid var(--line);background:var(--card)}
+.badge.urgent{border-color:var(--alert);color:var(--alert)}
+.alert{align-self:stretch;background:var(--alert);color:var(--on-alert);padding:10px 12px;border-radius:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.alert a{background:var(--on-alert);color:var(--alert);padding:6px 12px;border-radius:99px;text-decoration:none}
+.fac{align-self:flex-start;width:88%;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.fac b{display:block}.fac small{color:var(--muted)}
+.fac a{color:var(--brand);font-weight:600}
+.chips{display:flex;gap:6px;flex-wrap:wrap;padding:0 16px 8px}
+.chips button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:14px;cursor:pointer}
+form{display:flex;gap:8px;padding:10px 16px;border-top:1px solid var(--line);background:var(--card)}
+input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:99px;background:var(--bg)}
+form button{border:0;background:var(--brand);color:var(--on-brand);padding:0 18px;border-radius:99px;font-weight:600;cursor:pointer}
+form button:disabled{opacity:.5}
+footer{padding:6px 16px 12px;font-size:12px;color:var(--muted);background:var(--card)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Afya Msaidizi</h1>
+  <p id="sub"></p>
+  <div class="row">
+    <select id="lang" aria-label="Language"><option value="en">English</option><option value="sw">Kiswahili</option></select>
+    <select id="area" aria-label="Area"></select>
+    <select id="budget" aria-label="Budget"></select>
+  </div>
+</header>
+<div id="log" aria-live="polite"></div>
+<div class="chips" id="chips"></div>
+<form id="f" autocomplete="off">
+  <input id="q" maxlength="1000" required>
+  <button id="send"></button>
+</form>
+<footer id="foot"></footer>
+<script>
+const T = {
+  en: {sub:"Understand your symptoms, know when to get care, and find a clinic near you.", hello:"Hello! Tell me what is bothering you and where you live. I can’t diagnose, but I can help you decide how urgently to be seen and where to go.",
+       ph:"Describe how you feel…", send:"Send", area:"Area (optional)", low:"Low budget", any:"Any budget", err:"Sorry, I couldn’t connect. If this is an emergency, call 999 or 112.",
+       lvl:{emergency:"Emergency",urgent:"Urgent: today",routine:"Routine: next few days",self_care:"Self-care"}, km:"km", cost:"cost", far:"far from you", over:"may be above a low budget", h24:"open 24h",
+       chips:[]},
+  sw: {sub:"Elewa dalili zako, jua wakati wa kupata huduma, na upate kliniki karibu nawe.", hello:"Habari! Niambie kinachokusumbua na unapoishi. Siwezi kukutambua ugonjwa, lakini naweza kukusaidia kujua uharaka wa kuonana na daktari na mahali pa kwenda.",
+       ph:"Eleza unavyohisi…", send:"Tuma", area:"Eneo (hiari)", low:"Bajeti ndogo", any:"Bajeti yoyote", err:"Samahani, imeshindikana kuunganisha. Ikiwa ni dharura, piga 999 au 112.",
+       foot:"Si chombo cha kutambua ugonjwa. Katika dharura piga 999 au 112. Tafadhali usitume jina au kitambulisho chako.", call:"Piga", emergency:"Huenda ni dharura", callnow:"Piga 999",
+       lvl:{emergency:"Dharura",urgent:"Haraka: leo",routine:"Kawaida: siku chache",self_care:"Jihudumie"}, km:"km", cost:"gharama", far:"iko mbali", over:"inaweza kuwa juu ya bajeti ndogo", h24:"wazi saa 24",
+       chips:[]},
+};
+const $ = id => document.getElementById(id), log = $("log");
+let L = "en", AREAS = [];
+// If the page is opened as a file (file://) or from another port, point it at the API server.
+const API = new URLSearchParams(location.search).get("api") || (location.protocol === "file:" ? "http://127.0.0.1:8000" : "");
+
+function el(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text !== undefined) e.textContent = text; return e; }
+function add(node){ log.appendChild(node); log.scrollTop = log.scrollHeight; return node; }
+
+function applyLang(){
+  const t = T[L]; document.documentElement.lang = L;
+  $("sub").textContent = t.sub; $("q").placeholder = t.ph; $("send").textContent = t.send; $("foot").textContent = t.foot;
+  const a = $("area"), cur = a.value; a.replaceChildren(new Option(t.area, ""));
+  AREAS.forEach(n => a.add(new Option(n, n))); a.value = cur;
+  const b = $("budget"), bc = b.value || "low"; b.replaceChildren(new Option(t.low, "low"), new Option(t.any, "any")); b.value = bc;
+  const c = $("chips"); c.replaceChildren();
+  t.chips.forEach(s => { const x = el("button", "", s); x.type = "button"; x.onclick = () => { $("q").value = s; $("f").requestSubmit(); }; c.appendChild(x); });
+}
+
+function facCard(f){
+  const t = T[L], d = el("div", "fac");
+  d.appendChild(el("b", "", f.name));
+  const flags = [f.far && t.far, f.over_budget && t.over, f.open24 && t.h24].filter(Boolean).join(" · ");
+  d.appendChild(el("small", "", `${f.distance_km} ${t.km} · ${t.cost}: ${f.cost}` + (flags ? " · " + flags : "")));
+  return d;
+}
+
+async function send(text){
+  const t = T[L];
+  add(el("div", "msg user", text));
+  const wait = add(el("div", "msg bot", "…")); $("send").disabled = true;
+  try{
+    const r = await fetch(API + "/chat", {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({message:text, area:$("area").value || null, budget:$("budget").value})});
+    if(!r.ok) throw new Error(r.status);
+    const d = await r.json(); wait.remove();
+        if(d.triage_level === "emergency"){
+      add(el("div", "alert", "⚠ " + t.lvl.emergency));
+    }
+    const m = el("div", "msg bot");
+    m.appendChild(el("div", "badge " + (d.triage_level === "urgent" || d.triage_level === "emergency" ? "urgent" : ""), t.lvl[d.triage_level] || d.triage_level));
+    m.appendChild(el("div", "", d.reply)); add(m);
+    (d.facilities || []).forEach(f => add(facCard(f)));
+  }catch(e){ wait.remove(); add(el("div", "msg bot", t.err + " [" + (e.message && /^\d+$/.test(e.message) ? "server error " + e.message : "cannot reach server " + (API || location.origin)) + "]")); }
+  $("send").disabled = false; $("q").focus();
+}
+
+$("f").addEventListener("submit", e => { e.preventDefault(); const v = $("q").value.trim(); if(v){ $("q").value = ""; send(v); } });
+$("lang").addEventListener("change", e => { L = e.target.value; applyLang(); });
+(async () => {
+  try{ AREAS = await (await fetch(API + "/areas")).json(); }catch(e){}
+  applyLang(); add(el("div", "msg bot", T[L].hello));
+})();
+</script>
+</body>
+</html>
